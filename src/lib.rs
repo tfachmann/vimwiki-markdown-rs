@@ -1,5 +1,5 @@
 //! `vimwiki-markdown-rs` is a library to parse vimwiki-markdown files to html.
-//! 
+//!
 //! The binary that comes with this crate should be embedded with the VimWiki-Plugin for a seamless
 //! integration.
 
@@ -7,22 +7,21 @@ use chrono::Utc;
 use convert_case::{Case, Casing};
 use pulldown_cmark::{html, Options, Parser};
 use regex::{Captures, Regex};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{Error, Write};
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 
 mod links;
-
 
 fn get_html(markdown: String) -> String {
     let mut html_out = String::with_capacity(markdown.len());
     let parser = Parser::new_ext(
         &markdown,
         Options::ENABLE_FOOTNOTES
-        | Options::ENABLE_TABLES
-        | Options::ENABLE_STRIKETHROUGH
-        | Options::ENABLE_TASKLISTS,
+            | Options::ENABLE_TABLES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_TASKLISTS,
     );
     html::push_html(&mut html_out, parser);
     html_out
@@ -45,7 +44,7 @@ fn default_template() -> String {
     </div>
 </body>
 </html>"
-    .to_owned()
+        .to_owned()
 }
 
 /// All options related to the program such as the `highlighting_theme`.
@@ -73,7 +72,7 @@ impl ProgramOptions {
             Ok(data_str) => match toml::from_str(&data_str) {
                 Ok(data) => data,
                 Err(_) => ProgramOptions::default(),
-            }
+            },
             Err(_) => ProgramOptions::default(),
         }
     }
@@ -102,7 +101,6 @@ pub struct VimWikiOptions {
 }
 
 impl VimWikiOptions {
-
     /// Creates a new `VimWikiOptions` by parsing the `args` arguments vector.
     ///
     /// # Errors
@@ -112,7 +110,8 @@ impl VimWikiOptions {
     ///
     /// # Usage
     ///
-    ///```
+    ///
+    ///```ignore
     ///let args = vec![
     ///    "vimwiki-markdown-rs",                   // program name
     ///    "1",                                     // force flag
@@ -129,9 +128,8 @@ impl VimWikiOptions {
     ///];
     ///let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     ///
-    ///VimWikiOptions::new(&args).unwrap()
+    ///VimWikiOptions::new(&args).unwrap();
     ///```
-    ///
     pub fn new(args: &[String]) -> Result<VimWikiOptions, String> {
         if args.len() == 12 {
             let template_file =
@@ -179,8 +177,7 @@ impl VimWikiOptions {
     fn get_template_html(&self, highlightjs_theme: &str) -> String {
         let text = fs::read_to_string(&self.template_file).unwrap_or_else(|_| default_template());
         let now = Utc::now();
-        text
-            .replace("%root_path%", &self.root_path)
+        text.replace("%root_path%", &self.root_path)
             .replace("%title%", &self.stem().to_case(Case::Title))
             .replace("%pygments%", "")
             .replace("%code_theme%", highlightjs_theme)
@@ -194,15 +191,24 @@ impl VimWikiOptions {
         // fix each found link
         let text = re
             .replace_all(&text, |caps: &Captures| {
-                links::fix_link(&caps["title"], &caps["uri"], &self.input_file, &self.output_dir, &self.extension)
+                links::fix_link(
+                    &caps["title"],
+                    &caps["uri"],
+                    &self.input_file,
+                    &self.output_dir,
+                    &self.extension,
+                )
             })
-        .to_string();
+            .to_string();
         Ok(get_html(text))
     }
 }
 
 /// Uses `VimWikiOptions` and `ProgramOptions` to load the template and body html. Returns the html String.
-pub fn to_html(wiki_options: &VimWikiOptions, program_options: &ProgramOptions) -> Result<String, Error> {
+pub fn to_html(
+    wiki_options: &VimWikiOptions,
+    program_options: &ProgramOptions,
+) -> Result<String, Error> {
     // get template_html
     let template_html = wiki_options.get_template_html(&program_options.highlight_theme);
 
@@ -216,9 +222,13 @@ pub fn to_html(wiki_options: &VimWikiOptions, program_options: &ProgramOptions) 
 
 /// Uses `VimWikiOptions` and `ProgramOptions` to load the template and body html. Also saves the html
 /// file according the `wiki_options.output_filepath()`
-pub fn to_html_and_save(wiki_options: &VimWikiOptions, program_options: &ProgramOptions) -> Result<(), Error> {
+pub fn to_html_and_save(
+    wiki_options: &VimWikiOptions,
+    program_options: &ProgramOptions,
+) -> Result<(), Error> {
     // get html
-    let html = to_html(wiki_options, program_options).expect("Couldn't create html. The passed options might be compromised");
+    let html = to_html(wiki_options, program_options)
+        .expect("Couldn't create html. The passed options might be compromised");
 
     // save file
     let mut file = fs::File::create(wiki_options.output_filepath())?;
@@ -270,7 +280,7 @@ mod tests {
         let args = vec![
             "vimwiki-markdown-rs",
             "1",
-            "vimwiki",  // has to be markdown
+            "vimwiki", // has to be markdown
             "wiki",
             "/abs/path/to/vimwiki/site_html/bar/",
             "/abs/path/to/vimwiki/bar/mdfile.wiki",

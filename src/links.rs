@@ -1,7 +1,7 @@
 use path_clean::PathClean;
-use std::path::{Path, PathBuf};
 use pathdiff::diff_paths;
 use regex::Regex;
+use std::path::{Path, PathBuf};
 
 trait PathSpaces<T> {
     fn handle_spaces(&self) -> T;
@@ -26,7 +26,7 @@ fn handle_spaces(path: &str) -> String {
 }
 
 fn handle_fragment(uri: &str) -> (&str, Option<&str>) {
-    let split:Vec<&str> = uri.split('#').collect();
+    let split: Vec<&str> = uri.split('#').collect();
     match split.len() {
         1 => (split[0], None),
         2 => (split[0], Some(split[1])),
@@ -77,8 +77,7 @@ fn fix_link_rest(uri: &str, input_dir: &Path, output_dir: &Path) -> String {
         } else if url_raw.starts_with("local:") {
             // force relative path
             let tmp: String = url_raw.replace("local:", "");
-            diff_paths(input_dir.join(tmp), output_dir)
-                .unwrap()
+            diff_paths(input_dir.join(tmp), output_dir).unwrap()
         } else {
             PathBuf::from(url_raw)
         }
@@ -86,7 +85,7 @@ fn fix_link_rest(uri: &str, input_dir: &Path, output_dir: &Path) -> String {
     .clean()
     .handle_spaces()
     .to_str()
-    .unwrap_or(url_raw)  // something went wrong, take url
+    .unwrap_or(url_raw) // something went wrong, take url
     .to_owned();
     match title {
         Some(title) => format!("{} \"{}", url_raw, title),
@@ -98,11 +97,20 @@ fn fix_link_rest(uri: &str, input_dir: &Path, output_dir: &Path) -> String {
 ///
 /// This will handle relative and absolut paths to the new output_dir and corrects vimwiki
 /// references to point to html files
-pub fn fix_link(alt: &str, uri: &str, input_file: &str, output_dir: &str, extension: &str) -> String {
+pub fn fix_link(
+    alt: &str,
+    uri: &str,
+    input_file: &str,
+    output_dir: &str,
+    extension: &str,
+) -> String {
     fn is_vimwiki_link(input_dir: &Path, uri: &str, ext: &str) -> bool {
         // handle fragment
         let (url_raw, _) = handle_fragment(&uri);
-        input_dir.join(Path::new(url_raw)).with_extension(ext).is_file()
+        input_dir
+            .join(Path::new(url_raw))
+            .with_extension(ext)
+            .is_file()
     }
     let uri: String = uri.to_owned();
 
@@ -112,13 +120,11 @@ pub fn fix_link(alt: &str, uri: &str, input_file: &str, output_dir: &str, extens
 
     let uri: String = if is_vimwiki_link(input_dir, &uri, extension) {
         fix_link_vimwiki(&uri)
-    }
-    else {
+    } else {
         fix_link_rest(&uri, input_dir, output_dir)
     };
     format!("[{}]({})", alt, uri)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -132,9 +138,7 @@ mod tests {
         let mut caps_it = re.captures_iter(link);
         let capture = caps_it.next();
         let (alt, uri) = match capture {
-            Some(c) => {
-                (c["title"].to_string(), c["uri"].to_string())
-            },
+            Some(c) => (c["title"].to_string(), c["uri"].to_string()),
             None => ("".to_string(), "".to_string()),
         };
         fix_link(&alt, &uri, input_file, output_dir, extension)
@@ -144,9 +148,7 @@ mod tests {
         let mut caps_it = re.captures_iter(link);
         let capture = caps_it.next();
         let (alt, uri) = match capture {
-            Some(c) => {
-                (c["title"].to_string(), c["uri"].to_string())
-            },
+            Some(c) => (c["title"].to_string(), c["uri"].to_string()),
             None => ("".to_string(), "".to_string()),
         };
         let uri = fix_link_vimwiki(&uri);
@@ -162,7 +164,10 @@ mod tests {
     #[test]
     fn fix_link_vimwiki_relative_up() {
         let link = "[Link Title](../another_file)";
-        assert_eq!("[Link Title](../another_file.html)", to_fix_link_vimwiki(link));
+        assert_eq!(
+            "[Link Title](../another_file.html)",
+            to_fix_link_vimwiki(link)
+        );
     }
 
     #[test]
@@ -174,7 +179,10 @@ mod tests {
     #[test]
     fn fix_link_vimwiki_relative_fragment() {
         let link = "[Link Title](another_file#fragment)";
-        assert_eq!("[Link Title](another_file.html#fragment)", to_fix_link_vimwiki(link));
+        assert_eq!(
+            "[Link Title](another_file.html#fragment)",
+            to_fix_link_vimwiki(link)
+        );
     }
 
     #[test]
@@ -219,7 +227,7 @@ mod tests {
 
     //#[test]
     //fn fix_link_force_symlink() {
-        //unimplemented!();
+    //unimplemented!();
     //}
 
     #[test]
