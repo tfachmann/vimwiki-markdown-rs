@@ -30,7 +30,9 @@ fn main() -> Result<(), io::Error> {
     else {
         vimwiki_markdown_rs::ProgramOptions::default()
     };
-    vimwiki_markdown_rs::run(wiki_options, program_options)?;
+
+    // run method, send Error back to user (vimwiki plugin)
+    vimwiki_markdown_rs::to_html_and_save(&wiki_options, &program_options)?;
 
     Ok(())
 }
