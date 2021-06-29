@@ -64,7 +64,7 @@ fn fix_link_rest(uri: &str, input_dir: &Path, output_dir: &Path) -> String {
     }
     // TODO: assure the file exists
     let (url_raw, title) = handle_title(&uri);
-    let url_raw: String = {
+    let url_path = {
         if url_raw.starts_with("file:") {
             // force absolute path
             let tmp: String = url_raw.replace("file:", "");
@@ -81,15 +81,19 @@ fn fix_link_rest(uri: &str, input_dir: &Path, output_dir: &Path) -> String {
         } else {
             PathBuf::from(url_raw)
         }
+    };
+    let url_complete = if !url_path.starts_with("http://") && !url_path.starts_with("https://") {
+        url_path.clean()
+    } else {
+        url_path
     }
-    .clean()
     .handle_spaces()
     .to_str()
     .unwrap_or(url_raw) // something went wrong, take url
     .to_owned();
     match title {
-        Some(title) => format!("{} \"{}", url_raw, title),
-        None => url_raw,
+        Some(title) => format!("{} \"{}", url_complete, title),
+        None => url_complete,
     }
 }
 
@@ -262,6 +266,21 @@ mod tests {
         let link = "[alt](file:../images/foo with spaces.png \"Title\")";
         assert_eq!(
             "[alt](/abs/path/to/vimwiki/images/foo%20with%20spaces.png \"Title\")",
+            to_fix_link(link)
+        );
+    }
+
+    #[test]
+    fn link_real() {
+        let link = "[Inkscape](https://www.inkscape.org/)";
+        assert_eq!("[Inkscape](https://www.inkscape.org/)", to_fix_link(link));
+    }
+
+    #[test]
+    fn link_real_other() {
+        let link = "[open-source](https://gitlab.com/inkscape/inkscape/)";
+        assert_eq!(
+            "[open-source](https://gitlab.com/inkscape/inkscape/)",
             to_fix_link(link)
         );
     }

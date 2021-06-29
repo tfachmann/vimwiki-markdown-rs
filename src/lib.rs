@@ -156,7 +156,7 @@ impl VimWikiOptions {
                 Err("The syntax has to be markdown".to_owned())
             }
         } else {
-            Err("The amount of arguments from VimWiki do not match".to_owned())
+            Err(format!("The amount of arguments from VimWiki do not match. You provided {}, but {} are necessary", args.len(), 12))
         }
     }
 
