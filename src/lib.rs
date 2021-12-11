@@ -5,9 +5,11 @@
 
 use chrono::Utc;
 use convert_case::{Case, Casing};
+use kuchiki::traits::*;
 use pulldown_cmark::{html, Options, Parser};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Error, Write};
 use std::path::{Path, PathBuf};
@@ -185,7 +187,46 @@ impl VimWikiOptions {
     }
 
     fn get_body_html(&self) -> Result<String, Error> {
+        // read file to string
         let text = fs::read_to_string(&self.input_file)?;
+
+        let mut var_store = HashMap::new();
+        // parse defined commands
+        let re_def = Regex::new(r"<'''(?P<data>(.|\n)*)'''>").unwrap();
+        let mut caps_it = re_def.captures_iter(&text);
+        let capture = caps_it.next();
+        match capture {
+            Some(c) => {
+                let re_def_single = Regex::new(r"(?P<key>\S*?)\{(?P<value>[^}]*?)\}").unwrap();
+                re_def_single
+                    .captures_iter(&c["data"])
+                    .into_iter()
+                    .for_each(|e| {
+                        var_store.insert(e["key"].to_owned(), e["value"].to_owned());
+                    });
+            }
+            None => (),
+        }
+        // delete
+        let text = re_def.replace_all(&text, "").to_string();
+
+        // check whether variables were used and replace them
+        // TODO: do this recursively, until all occurences are fixed
+        let re_var =
+            Regex::new(r"'\{(?P<before>.*?)\$(?P<var>\S+?)(?P<after>(\s.*?\}|\}))'").unwrap();
+        let text = re_var
+            .replace_all(&text, |caps: &Captures| {
+                let val = match var_store.get(&caps["var"]) {
+                    Some(value) => value,
+                    None => panic!("Cannot find variable `{}`", &caps["var"]),
+                };
+                // due to the nature of the regex, the last } will always be included at the end
+                let before = &caps["before"];
+                let after = &caps["after"][0..&caps["after"].len() - 1];
+                format!("'{{{}{}{}}}'", before, val, after)
+            })
+            .to_string();
+
         let re = Regex::new(r"\[(?P<title>.*)\]\((?P<uri>(.)*)\)").unwrap();
 
         // fix each found link
@@ -200,7 +241,37 @@ impl VimWikiOptions {
                 )
             })
             .to_string();
-        Ok(get_html(text))
+        let html = get_html(text);
+        let document = kuchiki::parse_html().one(html.clone());
+
+        let re_cmd = Regex::new(r"'\{(?P<element>\S+)\s+(?P<type>\S+)\s+(?P<data>.*?)\}'").unwrap();
+
+        let mut change_parents = vec![];
+        document.descendants().for_each(|node| {
+            if let Some(text) = node.as_text() {
+                if let Some(capture) = re_cmd.captures_iter(&text.borrow()).next() {
+                    let element_type = &capture["element"];
+                    let html_attribute = match &capture["type"] {
+                        "s" | "st" | "sty" | "styl" | "style" => "style",
+                        _ => panic!("HTML attribute `{}` unknown", &capture["type"]),
+                    };
+                    let data = &capture["data"];
+                    match element_type {
+                        "p" | "pa" | "par" | "pare" | "paren" | "parent" => {
+                            if let Some(parent) = node.parent() {
+                                if let Some(element_data) = parent.as_element() {
+                                    let mut att = element_data.attributes.borrow_mut();
+                                    att.insert(html_attribute, data.to_string());
+                                }
+                                change_parents.push((parent, data.to_owned()));
+                            }
+                        }
+                        _ => panic!("Element type `{}` unknown", element_type),
+                    };
+                }
+            };
+        });
+        Ok(re_cmd.replace_all(&document.to_string(), "").to_string())
     }
 }
 
