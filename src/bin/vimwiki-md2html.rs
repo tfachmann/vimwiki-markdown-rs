@@ -45,7 +45,6 @@ fn main() -> Result<()> {
 
     info!("Parsing commandline arguments");
     let opt = Opt::from_args();
-    info!("{:#?}", opt);
 
     // get user specific configurations
     info!("Loading configuration file...");

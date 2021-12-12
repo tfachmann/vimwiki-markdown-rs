@@ -7,16 +7,16 @@ use anyhow::Result;
 use chrono::Utc;
 use convert_case::{Case, Casing};
 use directories::ProjectDirs;
-use kuchiki::traits::*;
+use lazy_static::lazy_static;
 use log::warn;
 use pulldown_cmark::{html, Options, Parser};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
+mod commands;
 mod links;
 
 fn get_html(markdown: String) -> String {
@@ -134,6 +134,10 @@ pub struct VimWikiOptions {
     input_file: PathBuf,
 }
 
+lazy_static! {
+    static ref RE_LINK: Regex = Regex::new(r"\[(?P<title>.*)\]\((?P<uri>(.)*)\)").unwrap();
+}
+
 impl VimWikiOptions {
     pub fn new(
         extension: &str,
@@ -162,7 +166,10 @@ impl VimWikiOptions {
 
     /// Returns the path of the html output as `String`
     pub fn output_filepath(&self) -> String {
-        format!("{}.html", self.output_dir.join(self.stem()).to_str().unwrap_or(""))
+        format!(
+            "{}.html",
+            self.output_dir.join(self.stem()).to_str().unwrap_or("")
+        )
     }
 
     fn get_template_html(&self, highlightjs_theme: &str) -> String {
@@ -179,47 +186,11 @@ impl VimWikiOptions {
         // read file to string
         let text = fs::read_to_string(&self.input_file)?;
 
-        let mut var_store = HashMap::new();
-        // parse defined commands
-        let re_def = Regex::new(r"<'''(?P<data>(.|\n)*)'''>").unwrap();
-        let mut caps_it = re_def.captures_iter(&text);
-        let capture = caps_it.next();
-        match capture {
-            Some(c) => {
-                let re_def_single = Regex::new(r"(?P<key>\S*?)\{(?P<value>[^}]*?)\}").unwrap();
-                re_def_single
-                    .captures_iter(&c["data"])
-                    .into_iter()
-                    .for_each(|e| {
-                        var_store.insert(e["key"].to_owned(), e["value"].to_owned());
-                    });
-            }
-            None => (),
-        }
-        // delete
-        let text = re_def.replace_all(&text, "").to_string();
+        // pre-process markdown input
+        let text = commands::preprocess_variables(&text);
 
-        // check whether variables were used and replace them
-        // TODO: do this recursively, until all occurences are fixed
-        let re_var =
-            Regex::new(r"'\{(?P<before>.*?)\$(?P<var>\S+?)(?P<after>(\s.*?\}|\}))'").unwrap();
-        let text = re_var
-            .replace_all(&text, |caps: &Captures| {
-                let val = match var_store.get(&caps["var"]) {
-                    Some(value) => value,
-                    None => panic!("Cannot find variable `{}`", &caps["var"]),
-                };
-                // due to the nature of the regex, the last } will always be included at the end
-                let before = &caps["before"];
-                let after = &caps["after"][0..&caps["after"].len() - 1];
-                format!("'{{{}{}{}}}'", before, val, after)
-            })
-            .to_string();
-
-        let re = Regex::new(r"\[(?P<title>.*)\]\((?P<uri>(.)*)\)").unwrap();
-
-        // fix each found link
-        let text = re
+        // fix each link found
+        let text = RE_LINK
             .replace_all(&text, |caps: &Captures| {
                 links::fix_link(
                     &caps["title"],
@@ -230,37 +201,12 @@ impl VimWikiOptions {
                 )
             })
             .to_string();
+
+        // convert to html
         let html = get_html(text);
-        let document = kuchiki::parse_html().one(html.clone());
 
-        let re_cmd = Regex::new(r"'\{(?P<element>\S+)\s+(?P<type>\S+)\s+(?P<data>.*?)\}'").unwrap();
-
-        let mut change_parents = vec![];
-        document.descendants().for_each(|node| {
-            if let Some(text) = node.as_text() {
-                if let Some(capture) = re_cmd.captures_iter(&text.borrow()).next() {
-                    let element_type = &capture["element"];
-                    let html_attribute = match &capture["type"] {
-                        "s" | "st" | "sty" | "styl" | "style" => "style",
-                        _ => panic!("HTML attribute `{}` unknown", &capture["type"]),
-                    };
-                    let data = &capture["data"];
-                    match element_type {
-                        "p" | "pa" | "par" | "pare" | "paren" | "parent" => {
-                            if let Some(parent) = node.parent() {
-                                if let Some(element_data) = parent.as_element() {
-                                    let mut att = element_data.attributes.borrow_mut();
-                                    att.insert(html_attribute, data.to_string());
-                                }
-                                change_parents.push((parent, data.to_owned()));
-                            }
-                        }
-                        _ => panic!("Element type `{}` unknown", element_type),
-                    };
-                }
-            };
-        });
-        Ok(re_cmd.replace_all(&document.to_string(), "").to_string())
+        // apply commands
+        Ok(commands::apply_commands(&html))
     }
 }
 
@@ -303,4 +249,3 @@ pub fn to_html_and_save(
 
     Ok(())
 }
-
