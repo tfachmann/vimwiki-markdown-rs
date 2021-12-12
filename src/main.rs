@@ -1,7 +1,7 @@
 use anyhow::Result;
 use env_logger::Env;
 use log::info;
-use std::env;
+use std::{env, path::PathBuf, str::FromStr};
 
 use vimwiki_markdown_rs::VimWikiOptions;
 
@@ -9,11 +9,11 @@ struct VimWikiCmdlineArgs {
     force: bool,
     syntax: String,
     extension: String,
-    output_dir: String,
-    input_file: String,
-    css_file: String,
-    template_file: String,
-    root_path: String,
+    output_dir: PathBuf,
+    input_file: PathBuf,
+    css_file: PathBuf,
+    template_file: PathBuf,
+    root_path: PathBuf,
 }
 
 impl VimWikiCmdlineArgs {
@@ -56,15 +56,15 @@ impl VimWikiCmdlineArgs {
                     force: args[1] == "1",
                     syntax: args[2].to_owned(),
                     extension: args[3].to_owned(),
-                    output_dir: args[4].to_owned(),
-                    input_file: args[5].to_owned(),
-                    css_file: args[6].to_owned(),
-                    template_file,
+                    output_dir: PathBuf::from_str(&args[4]).unwrap(),
+                    input_file: PathBuf::from_str(&args[5].to_owned()).unwrap(),
+                    css_file: PathBuf::from_str(&args[6].to_owned()).unwrap(),
+                    template_file: PathBuf::from_str(&template_file).unwrap(),
                     root_path: {
                         if args[10] == "-" && args[11] == "-" {
-                            String::from("./")
+                            PathBuf::from_str("./").unwrap()
                         } else {
-                            args[10].to_owned()
+                            PathBuf::from_str(&args[10]).unwrap()
                         }
                     },
                 };
@@ -82,10 +82,10 @@ impl From<VimWikiCmdlineArgs> for VimWikiOptions {
     fn from(cmdline_args: VimWikiCmdlineArgs) -> Self {
         VimWikiOptions::new(
             &cmdline_args.extension,
-            &cmdline_args.output_dir,
-            &cmdline_args.input_file,
             &cmdline_args.template_file,
             &cmdline_args.root_path,
+            &cmdline_args.output_dir,
+            &cmdline_args.input_file,
         )
     }
 }

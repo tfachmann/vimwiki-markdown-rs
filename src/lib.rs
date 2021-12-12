@@ -42,8 +42,6 @@ fn default_template() -> String {
     %pygments%
 </head>
 <body>
-    <a href=\"%root_path%index.html\">Index</a> |
-    <hr>
     <div class=\"content\">
     %content%
     </div>
@@ -130,26 +128,26 @@ impl ProgramOptions {
 #[derive(Debug)]
 pub struct VimWikiOptions {
     extension: String,
-    output_dir: String,
-    input_file: String,
-    template_file: String,
-    root_path: String,
+    template_file: PathBuf,
+    root_path: PathBuf,
+    output_dir: PathBuf,
+    input_file: PathBuf,
 }
 
 impl VimWikiOptions {
     pub fn new(
         extension: &str,
-        output_dir: &str,
-        input_file: &str,
-        template_file: &str,
-        root_path: &str,
+        template_file: &PathBuf,
+        root_path: &PathBuf,
+        output_dir: &PathBuf,
+        input_file: &PathBuf,
     ) -> Self {
         Self {
             extension: extension.to_string(),
-            output_dir: output_dir.to_string(),
-            input_file: input_file.to_string(),
-            template_file: template_file.to_string(),
-            root_path: root_path.to_string(),
+            template_file: template_file.clone(),
+            root_path: root_path.clone(),
+            output_dir: output_dir.clone(),
+            input_file: input_file.clone(),
         }
     }
 
@@ -164,13 +162,13 @@ impl VimWikiOptions {
 
     /// Returns the path of the html output as `String`
     pub fn output_filepath(&self) -> String {
-        format!("{}{}.html", self.output_dir, self.stem())
+        format!("{}.html", self.output_dir.join(self.stem()).to_str().unwrap_or(""))
     }
 
     fn get_template_html(&self, highlightjs_theme: &str) -> String {
         let text = fs::read_to_string(&self.template_file).unwrap_or_else(|_| default_template());
         let now = Utc::now();
-        text.replace("%root_path%", &self.root_path)
+        text.replace("%root_path%", &self.root_path.to_str().unwrap_or(""))
             .replace("%title%", &self.stem().to_case(Case::Title))
             .replace("%pygments%", "")
             .replace("%code_theme%", highlightjs_theme)
@@ -226,8 +224,8 @@ impl VimWikiOptions {
                 links::fix_link(
                     &caps["title"],
                     &caps["uri"],
-                    &self.input_file,
-                    &self.output_dir,
+                    &self.input_file.to_str().unwrap_or(""),
+                    &self.output_dir.to_str().unwrap_or(""),
                     &self.extension,
                 )
             })
