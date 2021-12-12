@@ -8,13 +8,13 @@ use chrono::Utc;
 use convert_case::{Case, Casing};
 use directories::ProjectDirs;
 use kuchiki::traits::*;
-use log::{info, warn};
+use log::warn;
 use pulldown_cmark::{html, Options, Parser};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Error, Write};
+use std::io::{Error, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 
 mod links;
@@ -129,73 +129,27 @@ impl ProgramOptions {
 /// upcoming versions.
 #[derive(Debug)]
 pub struct VimWikiOptions {
-    force: bool,
-    syntax: String,
     extension: String,
     output_dir: String,
     input_file: String,
-    css_file: String,
     template_file: String,
     root_path: String,
 }
 
 impl VimWikiOptions {
-    /// Creates a new `VimWikiOptions` by parsing the `args` arguments vector.
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if the length of `args` is wrong (not 12) or the syntax specified in
-    /// `args[2]` is not `"markdown"`. The arguments are provided by VimWiki's plugin.
-    ///
-    /// # Usage
-    ///
-    ///
-    ///```ignore
-    ///let args = vec![
-    ///    "vimwiki-markdown-rs",                   // program name
-    ///    "1",                                     // force flag
-    ///    "markdown",                              // syntax
-    ///    "wiki",                                  // (wiki) extension
-    ///    "/abs/path/to/vimwiki/site_html/bar/",   // directory of (html) output
-    ///    "/abs/path/to/vimwiki/bar/mdfile.wiki",  // path of input / vimwiki file
-    ///    "css-file.css",                          // path of css file
-    ///    "/abs/path/to/vimwiki/templates/",       // directory of template
-    ///    "template",                              // template filename
-    ///    ".tpl",                                  // template extension
-    ///    "../",                                   // relative path to root
-    ///    "-",                                     // not clear / irrelevant
-    ///];
-    ///let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-    ///
-    ///VimWikiOptions::new(&args).unwrap();
-    ///```
-    pub fn new(args: &[String]) -> Result<VimWikiOptions, String> {
-        if args.len() == 12 {
-            let template_file =
-                [args[7].to_owned(), args[8].to_owned(), args[9].to_owned()].concat();
-            if args[2] == "markdown" {
-                let options = VimWikiOptions {
-                    force: args[1] == "1",
-                    syntax: args[2].to_owned(),
-                    extension: args[3].to_owned(),
-                    output_dir: args[4].to_owned(),
-                    input_file: args[5].to_owned(),
-                    css_file: args[6].to_owned(),
-                    template_file,
-                    root_path: {
-                        if args[10] == "-" && args[11] == "-" {
-                            String::from("./")
-                        } else {
-                            args[10].to_owned()
-                        }
-                    },
-                };
-                Ok(options)
-            } else {
-                Err("The syntax has to be markdown".to_owned())
-            }
-        } else {
-            Err(format!("The amount of arguments from VimWiki do not match. You provided {}, but {} are necessary", args.len(), 12))
+    pub fn new(
+        extension: &str,
+        output_dir: &str,
+        input_file: &str,
+        template_file: &str,
+        root_path: &str,
+    ) -> Self {
+        Self {
+            extension: extension.to_string(),
+            output_dir: output_dir.to_string(),
+            input_file: input_file.to_string(),
+            template_file: template_file.to_string(),
+            root_path: root_path.to_string(),
         }
     }
 
@@ -333,10 +287,17 @@ pub fn to_html(
 pub fn to_html_and_save(
     wiki_options: &VimWikiOptions,
     program_options: &ProgramOptions,
-) -> Result<(), Error> {
+) -> Result<()> {
     // get html
-    let html = to_html(wiki_options, program_options)
-        .expect("Couldn't create html. The passed options might be compromised");
+    let html = to_html(wiki_options, program_options).map_err(|e| {
+        Error::new(
+            ErrorKind::InvalidInput,
+            format!(
+                "Could not create html. The passed options might be compromised: {}",
+                e
+            ),
+        )
+    })?;
 
     // save file
     let mut file = fs::File::create(wiki_options.output_filepath())?;
@@ -345,62 +306,3 @@ pub fn to_html_and_save(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn init_options() -> VimWikiOptions {
-        let args = vec![
-            "vimwiki-markdown-rs",
-            "1",
-            "markdown",
-            "wiki",
-            "/abs/path/to/vimwiki/site_html/bar/",
-            "/abs/path/to/vimwiki/bar/mdfile.wiki",
-            "css-file.css",
-            "/abs/path/to/vimwiki/templates/",
-            "template",
-            ".tpl",
-            "../",
-            "-",
-        ];
-        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-        VimWikiOptions::new(&args).unwrap()
-    }
-
-    #[test]
-    fn options_correct() {
-        init_options();
-    }
-
-    #[test]
-    #[should_panic(expected = "arguments from VimWiki do not match")]
-    fn options_wrong_length() {
-        let args = vec![""; 11];
-        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-
-        VimWikiOptions::new(&args).unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "syntax has to be markdown")]
-    fn options_not_markdown() {
-        let args = vec![
-            "vimwiki-markdown-rs",
-            "1",
-            "vimwiki", // has to be markdown
-            "wiki",
-            "/abs/path/to/vimwiki/site_html/bar/",
-            "/abs/path/to/vimwiki/bar/mdfile.wiki",
-            "css-file.css",
-            "/abs/path/to/vimwiki/templates/",
-            "template",
-            ".tpl",
-            "../",
-            "-",
-        ];
-        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
-
-        VimWikiOptions::new(&args).unwrap();
-    }
-}
