@@ -3,9 +3,12 @@
 //! The binary that comes with this crate should be embedded with the VimWiki-Plugin for a seamless
 //! integration.
 
+use anyhow::Result;
 use chrono::Utc;
 use convert_case::{Case, Casing};
+use directories::ProjectDirs;
 use kuchiki::traits::*;
+use log::{info, warn};
 use pulldown_cmark::{html, Options, Parser};
 use regex::{Captures, Regex};
 use serde::{Deserialize, Serialize};
@@ -52,16 +55,53 @@ fn default_template() -> String {
 /// All options related to the program such as the `highlighting_theme`.
 ///
 /// It offers options to save and load a `toml` configuration file.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProgramOptions {
     highlight_theme: String,
 }
 
-impl ProgramOptions {
+impl Default for ProgramOptions {
     /// Creates a new `ProgramOptions` with default settings.
-    pub fn default() -> ProgramOptions {
-        ProgramOptions {
+    fn default() -> Self {
+        Self {
             highlight_theme: "default".to_string(),
+        }
+    }
+}
+
+impl ProgramOptions {
+    /// Creates a new `ProgramOptions` from the toml configuration file.
+    ///
+    /// If the configuration file given by `path` does not exist or is invalid,
+    /// `ProgramOptions` with `default` Parameters will be returned.
+    pub fn new() -> ProgramOptions {
+        if let Some(proj_dirs) = ProjectDirs::from("com", "tfachmann", "vimwiki-markdown-rs") {
+            let conf_path = Path::new(proj_dirs.config_dir());
+            if !conf_path.is_dir() {
+                fs::create_dir(conf_path).unwrap_or(());
+            }
+            let conf_file = conf_path.join("config.toml");
+            match ProgramOptions::load(&conf_file) {
+                Ok(po) => po,
+                Err(err) => {
+                    warn!(
+                        "Could not load config in {}: {}\nUsing default.",
+                        &conf_file.to_str().unwrap(),
+                        &err
+                    );
+                    let po = ProgramOptions::default();
+                    if let Err(err) = po.save(&conf_file) {
+                        warn!(
+                            "Could not save default config in {}: {}",
+                            &conf_file.to_str().unwrap(),
+                            &err
+                        );
+                    }
+                    po
+                }
+            }
+        } else {
+            ProgramOptions::default()
         }
     }
 
@@ -69,20 +109,17 @@ impl ProgramOptions {
     ///
     /// If the configuration file given by `path` does not exist or is invalid,
     /// `ProgramOptions` with `default` Parameters will be returned.
-    pub fn load(path: &PathBuf) -> ProgramOptions {
-        match fs::read_to_string(path) {
-            Ok(data_str) => match toml::from_str(&data_str) {
-                Ok(data) => data,
-                Err(_) => ProgramOptions::default(),
-            },
-            Err(_) => ProgramOptions::default(),
-        }
+    fn load(path: &PathBuf) -> Result<ProgramOptions> {
+        let data_str = fs::read_to_string(path)?;
+        let data: ProgramOptions = toml::from_str(&data_str)?;
+        Ok(data)
     }
 
     /// Save the `ProgramOptions` to a toml configuration file given with `path`.
-    pub fn save(&self, path: &PathBuf) {
-        let data_str = toml::to_string_pretty(self).unwrap();
-        fs::write(path, data_str).expect("Couldn't write to File");
+    fn save(&self, path: &PathBuf) -> Result<()> {
+        let data_str = toml::to_string_pretty(self)?;
+        fs::write(path, data_str)?;
+        Ok(())
     }
 }
 
